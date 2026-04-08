@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: dynomite
+
+server:
+  port: 9091
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info"
+
+dynomite:
+  node-id: node1
+  replication-factor: 2
+  virtual-nodes: 64
+  request-timeout-millis: 800
+  nodes:
+    - id: node1
+      base-url: "http://127.0.0.1:9091"
+    - id: node2
+      base-url: "http://127.0.0.1:9092"
+    - id: node3
+      base-url: "http://127.0.0.1:9093"
+
+---
+spring:
+  config:
+    activate:
+      on-profile: node2
+server:
+  port: 9092
+dynomite:
+  node-id: node2
+
+---
+spring:
+  config:
+    activate:
+      on-profile: node3
+server:
+  port: 9093
+dynomite:
+  node-id: node3
+
