@@ -3,6 +3,7 @@ package com.crowdfunding.dynomite.ring;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.NavigableMap;
@@ -49,11 +50,13 @@ public final class ConsistentHashRing {
         LinkedHashSet<RingNode> results = new LinkedHashSet<>(maxReplicas);
 
         // Walk clockwise from the key hash, wrapping around.
-        for (RingNode node : valuesStartingAt(keyHash)) {
-            results.add(node);
-            if (results.size() == maxReplicas) {
-                break;
-            }
+        Iterator<RingNode> tailIterator = ring.tailMap(keyHash, true).values().iterator();
+        while (tailIterator.hasNext() && results.size() < maxReplicas) {
+            results.add(tailIterator.next());
+        }
+        Iterator<RingNode> headIterator = ring.headMap(keyHash, false).values().iterator();
+        while (headIterator.hasNext() && results.size() < maxReplicas) {
+            results.add(headIterator.next());
         }
 
         // Extremely small rings could theoretically collide to fewer nodes; fall back to unique list.
@@ -68,12 +71,4 @@ public final class ConsistentHashRing {
 
         return new ArrayList<>(results);
     }
-
-    private Iterable<RingNode> valuesStartingAt(long hash) {
-        List<RingNode> values = new ArrayList<>(ring.size());
-        values.addAll(ring.tailMap(hash, true).values());
-        values.addAll(ring.headMap(hash, false).values());
-        return values;
-    }
 }
-

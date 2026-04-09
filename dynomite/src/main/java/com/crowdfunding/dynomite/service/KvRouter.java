@@ -6,7 +6,6 @@ import com.crowdfunding.dynomite.ring.RingNode;
 import com.crowdfunding.dynomite.store.KeyValueStore;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 
@@ -26,10 +25,11 @@ public class KvRouter {
     public Optional<String> get(String key) {
         List<RingNode> replicas = clusterView.replicasForKey(key);
         RingNode local = clusterView.localNode();
-        Duration timeout = Duration.ofMillis(clusterView.getProperties().getRequestTimeoutMillis());
+        String localNodeId = local.id();
+        var timeout = clusterView.requestTimeout();
 
         for (RingNode replica : replicas) {
-            if (replica.id().equals(local.id())) {
+            if (replica.id().equals(localNodeId)) {
                 Optional<String> value = store.get(key);
                 if (value.isPresent()) {
                     return value;
@@ -52,10 +52,11 @@ public class KvRouter {
     public void put(String key, KvPutRequest request) {
         List<RingNode> replicas = clusterView.replicasForKey(key);
         RingNode local = clusterView.localNode();
-        Duration timeout = Duration.ofMillis(clusterView.getProperties().getRequestTimeoutMillis());
+        String localNodeId = local.id();
+        var timeout = clusterView.requestTimeout();
 
         for (RingNode replica : replicas) {
-            if (replica.id().equals(local.id())) {
+            if (replica.id().equals(localNodeId)) {
                 store.put(key, request.getValue(), request.getTtlSeconds());
                 continue;
             }
@@ -71,11 +72,12 @@ public class KvRouter {
     public boolean delete(String key) {
         List<RingNode> replicas = clusterView.replicasForKey(key);
         RingNode local = clusterView.localNode();
-        Duration timeout = Duration.ofMillis(clusterView.getProperties().getRequestTimeoutMillis());
+        String localNodeId = local.id();
+        var timeout = clusterView.requestTimeout();
 
         boolean deletedAny = false;
         for (RingNode replica : replicas) {
-            if (replica.id().equals(local.id())) {
+            if (replica.id().equals(localNodeId)) {
                 deletedAny |= store.delete(key);
                 continue;
             }
@@ -89,4 +91,3 @@ public class KvRouter {
         return deletedAny;
     }
 }
-

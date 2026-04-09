@@ -5,6 +5,7 @@ import com.crowdfunding.dynomite.ring.ConsistentHashRing;
 import com.crowdfunding.dynomite.ring.RingNode;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.List;
 
 @Component
@@ -12,6 +13,8 @@ public class ClusterView {
 
     private final DynomiteProperties properties;
     private final ConsistentHashRing ring;
+    private final RingNode localNode;
+    private final Duration requestTimeout;
 
     public ClusterView(DynomiteProperties properties) {
         this.properties = properties;
@@ -19,6 +22,11 @@ public class ClusterView {
                 .map(n -> new RingNode(n.getId(), n.getBaseUrl()))
                 .toList();
         this.ring = new ConsistentHashRing(nodes, properties.getVirtualNodes());
+        this.localNode = nodes.stream()
+                .filter(node -> node.id().equals(properties.getNodeId()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("dynomite.node-id is not in dynomite.nodes"));
+        this.requestTimeout = Duration.ofMillis(properties.getRequestTimeoutMillis());
     }
 
     public DynomiteProperties getProperties() {
@@ -26,15 +34,14 @@ public class ClusterView {
     }
 
     public RingNode localNode() {
-        return properties.getNodes().stream()
-                .filter(n -> n.getId().equals(properties.getNodeId()))
-                .findFirst()
-                .map(n -> new RingNode(n.getId(), n.getBaseUrl()))
-                .orElseThrow(() -> new IllegalStateException("dynomite.node-id is not in dynomite.nodes"));
+        return localNode;
+    }
+
+    public Duration requestTimeout() {
+        return requestTimeout;
     }
 
     public List<RingNode> replicasForKey(String key) {
         return ring.getReplicas(key, properties.getReplicationFactor());
     }
 }
-

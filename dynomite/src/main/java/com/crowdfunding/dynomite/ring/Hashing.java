@@ -6,6 +6,8 @@ import java.security.NoSuchAlgorithmException;
 
 final class Hashing {
 
+    private static final ThreadLocal<MessageDigest> SHA_256 = ThreadLocal.withInitial(Hashing::createSha256);
+
     private Hashing() {
     }
 
@@ -21,12 +23,16 @@ final class Hashing {
     }
 
     private static byte[] sha256(byte[] input) {
+        MessageDigest messageDigest = SHA_256.get();
+        messageDigest.reset();
+        return messageDigest.digest(input);
+    }
+
+    private static MessageDigest createSha256() {
         try {
-            MessageDigest messageDigest = MessageDigest.getInstance("SHA-256");
-            return messageDigest.digest(input);
+            return MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
     }
 }
-
