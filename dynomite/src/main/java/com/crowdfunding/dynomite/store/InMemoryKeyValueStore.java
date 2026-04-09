@@ -25,7 +25,7 @@ public class InMemoryKeyValueStore implements KeyValueStore {
     public void put(String key, String value, Long ttlSeconds) {
         Instant expiresAt = null;
         if (ttlSeconds != null && ttlSeconds > 0) {
-            expiresAt = Instant.now(clock).plusSeconds(ttlSeconds);
+            expiresAt = clock.instant().plusSeconds(ttlSeconds);
         }
         map.put(key, new Record(value, expiresAt));
     }
@@ -36,7 +36,8 @@ public class InMemoryKeyValueStore implements KeyValueStore {
         if (record == null) {
             return Optional.empty();
         }
-        if (record.isExpired(clock)) {
+        Instant now = clock.instant();
+        if (record.isExpired(now)) {
             map.remove(key, record);
             return Optional.empty();
         }
@@ -49,9 +50,8 @@ public class InMemoryKeyValueStore implements KeyValueStore {
     }
 
     private record Record(String value, Instant expiresAt) {
-        boolean isExpired(Clock clock) {
-            return expiresAt != null && !Instant.now(clock).isBefore(expiresAt);
+        boolean isExpired(Instant now) {
+            return expiresAt != null && !now.isBefore(expiresAt);
         }
     }
 }
-
