@@ -31,8 +31,7 @@ public class InternalKvController {
 
     @DeleteMapping("/{key}")
     public ResponseEntity<Void> delete(@PathVariable String key) {
-        store.delete(key);
-        return ResponseEntity.noContent().build();
+        boolean deleted = store.delete(key);
+        return deleted ? ResponseEntity.noContent().build() : ResponseEntity.notFound().build();
     }
 }
-

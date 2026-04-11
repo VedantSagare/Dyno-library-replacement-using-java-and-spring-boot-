@@ -6,6 +6,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.Duration;
 import java.util.Optional;
@@ -21,9 +22,8 @@ public class PeerClient {
 
     public Optional<String> getLocalOnly(String baseUrl, String key, Duration timeout) {
         try {
-            String url = baseUrl + "/v1/internal/kv/" + key;
             String value = webClient.get()
-                    .uri(url)
+                    .uri(buildInternalKeyUri(baseUrl, key))
                     .accept(MediaType.TEXT_PLAIN)
                     .retrieve()
                     .bodyToMono(String.class)
@@ -39,9 +39,8 @@ public class PeerClient {
     }
 
     public void putLocalOnly(String baseUrl, String key, KvPutRequest request, Duration timeout) {
-        String url = baseUrl + "/v1/internal/kv/" + key;
         webClient.put()
-                .uri(url)
+                .uri(buildInternalKeyUri(baseUrl, key))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .retrieve()
@@ -50,14 +49,28 @@ public class PeerClient {
                 .block();
     }
 
-    public void deleteLocalOnly(String baseUrl, String key, Duration timeout) {
-        String url = baseUrl + "/v1/internal/kv/" + key;
-        webClient.delete()
-                .uri(url)
-                .retrieve()
-                .toBodilessEntity()
-                .timeout(timeout)
-                .block();
+    public boolean deleteLocalOnly(String baseUrl, String key, Duration timeout) {
+        try {
+            webClient.delete()
+                    .uri(buildInternalKeyUri(baseUrl, key))
+                    .retrieve()
+                    .toBodilessEntity()
+                    .timeout(timeout)
+                    .block();
+            return true;
+        } catch (WebClientResponseException ex) {
+            if (ex.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return false;
+            }
+            throw ex;
+        }
+    }
+
+    static String buildInternalKeyUri(String baseUrl, String key) {
+        return UriComponentsBuilder.fromUriString(baseUrl)
+                .pathSegment("v1", "internal", "kv", key)
+                .build()
+                .encode()
+                .toUriString();
     }
 }
-
