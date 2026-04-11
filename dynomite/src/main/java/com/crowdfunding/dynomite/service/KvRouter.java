@@ -22,7 +22,7 @@ public class KvRouter {
         this.peerClient = peerClient;
     }
 
-    public Optional<String> get(String key) {
+    public Optional<KvReadResult> get(String key) {
         List<RingNode> replicas = clusterView.replicasForKey(key);
         RingNode local = clusterView.localNode();
         String localNodeId = local.id();
@@ -32,7 +32,7 @@ public class KvRouter {
             if (replica.id().equals(localNodeId)) {
                 Optional<String> value = store.get(key);
                 if (value.isPresent()) {
-                    return value;
+                    return value.map(found -> new KvReadResult(key, found, replica.id()));
                 }
                 continue;
             }
@@ -40,7 +40,7 @@ public class KvRouter {
             try {
                 Optional<String> value = peerClient.getLocalOnly(replica.baseUrl(), key, timeout);
                 if (value.isPresent()) {
-                    return value;
+                    return value.map(found -> new KvReadResult(key, found, replica.id()));
                 }
             } catch (Exception ignored) {
                 // Best-effort: continue to next replica
@@ -54,10 +54,20 @@ public class KvRouter {
         RingNode local = clusterView.localNode();
         String localNodeId = local.id();
         var timeout = clusterView.requestTimeout();
+        boolean localReplica = false;
 
         for (RingNode replica : replicas) {
             if (replica.id().equals(localNodeId)) {
-                store.put(key, request.getValue(), request.getTtlSeconds());
+                localReplica = true;
+            }
+        }
+
+        if (localReplica) {
+            store.put(key, request.getValue(), request.getTtlSeconds());
+        }
+
+        for (RingNode replica : replicas) {
+            if (replica.id().equals(localNodeId)) {
                 continue;
             }
 
@@ -79,11 +89,15 @@ public class KvRouter {
         for (RingNode replica : replicas) {
             if (replica.id().equals(localNodeId)) {
                 deletedAny |= store.delete(key);
+            }
+        }
+
+        for (RingNode replica : replicas) {
+            if (replica.id().equals(localNodeId)) {
                 continue;
             }
             try {
-                peerClient.deleteLocalOnly(replica.baseUrl(), key, timeout);
-                deletedAny = true;
+                deletedAny |= peerClient.deleteLocalOnly(replica.baseUrl(), key, timeout);
             } catch (Exception ignored) {
                 // Best-effort
             }
