@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.util.UriComponentsBuilder;
+import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.Optional;
@@ -38,15 +39,26 @@ public class PeerClient {
         }
     }
 
+    /**
+     * Blocking variant — waits for the remote peer to acknowledge.
+     */
     public void putLocalOnly(String baseUrl, String key, KvPutRequest request, Duration timeout) {
-        webClient.put()
+        putLocalOnlyAsync(baseUrl, key, request, timeout).block();
+    }
+
+    /**
+     * Non-blocking variant — returns a {@link Mono} so callers can fire-and-forget
+     * replication without blocking the request thread.
+     */
+    public Mono<Void> putLocalOnlyAsync(String baseUrl, String key, KvPutRequest request, Duration timeout) {
+        return webClient.put()
                 .uri(buildInternalKeyUri(baseUrl, key))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .retrieve()
                 .toBodilessEntity()
                 .timeout(timeout)
-                .block();
+                .then();
     }
 
     public boolean deleteLocalOnly(String baseUrl, String key, Duration timeout) {

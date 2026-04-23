@@ -9,7 +9,7 @@ import java.time.Duration;
 import java.util.List;
 
 @Component
-public class ClusterView {
+public class ClusterView implements ClusterViewPort {
 
     private final DynomiteProperties properties;
     private final ConsistentHashRing ring;
@@ -33,14 +33,17 @@ public class ClusterView {
         return properties;
     }
 
+    @Override
     public RingNode localNode() {
         return localNode;
     }
 
+    @Override
     public Duration requestTimeout() {
         return requestTimeout;
     }
 
+    @Override
     public List<RingNode> replicasForKey(String key) {
         return ring.getReplicas(key, properties.getReplicationFactor());
     }
