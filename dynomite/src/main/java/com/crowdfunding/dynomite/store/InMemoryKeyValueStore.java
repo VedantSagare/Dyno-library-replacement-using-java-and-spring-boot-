@@ -1,17 +1,27 @@
 package com.crowdfunding.dynomite.store;
 
+import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 @Component
 public class InMemoryKeyValueStore implements KeyValueStore {
 
+    private static final Logger log = LoggerFactory.getLogger(InMemoryKeyValueStore.class);
+    private static final long REAPER_INTERVAL_SECONDS = 60;
+
     private final ConcurrentHashMap<String, Record> map = new ConcurrentHashMap<>();
     private final Clock clock;
+    private final ScheduledExecutorService reaper;
 
     public InMemoryKeyValueStore() {
         this(Clock.systemUTC());
@@ -19,6 +29,13 @@ public class InMemoryKeyValueStore implements KeyValueStore {
 
     InMemoryKeyValueStore(Clock clock) {
         this.clock = clock;
+        this.reaper = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "kv-ttl-reaper");
+            t.setDaemon(true);
+            return t;
+        });
+        this.reaper.scheduleAtFixedRate(this::evictExpired,
+                REAPER_INTERVAL_SECONDS, REAPER_INTERVAL_SECONDS, TimeUnit.SECONDS);
     }
 
     @Override
@@ -47,6 +64,38 @@ public class InMemoryKeyValueStore implements KeyValueStore {
     @Override
     public boolean delete(String key) {
         return map.remove(key) != null;
+    }
+
+    /**
+     * Returns the current number of entries (including potentially-expired ones
+     * that have not yet been reaped). Useful for monitoring / observability.
+     */
+    public int size() {
+        return map.size();
+    }
+
+    @PreDestroy
+    void shutdown() {
+        reaper.shutdownNow();
+    }
+
+    /**
+     * Periodic background task that removes expired entries so they
+     * don't leak memory when never read again after TTL expiry.
+     */
+    private void evictExpired() {
+        Instant now = clock.instant();
+        int evicted = 0;
+        for (var entry : map.entrySet()) {
+            if (entry.getValue().isExpired(now)) {
+                if (map.remove(entry.getKey(), entry.getValue())) {
+                    evicted++;
+                }
+            }
+        }
+        if (evicted > 0) {
+            log.debug("TTL reaper evicted {} expired entries", evicted);
+        }
     }
 
     private record Record(String value, Instant expiresAt) {

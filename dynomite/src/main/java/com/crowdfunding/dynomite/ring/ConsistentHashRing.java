@@ -1,6 +1,5 @@
 package com.crowdfunding.dynomite.ring;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -26,7 +25,7 @@ public final class ConsistentHashRing {
 
         this.uniqueNodes = nodes.stream()
                 .sorted(Comparator.comparing(RingNode::id))
-                .toList();
+                .toList();  // already unmodifiable
 
         TreeMap<Long, RingNode> map = new TreeMap<>();
         for (RingNode node : uniqueNodes) {
@@ -69,6 +68,7 @@ public final class ConsistentHashRing {
             }
         }
 
-        return new ArrayList<>(results);
+        // Return an immutable, compact list instead of a mutable ArrayList.
+        return List.copyOf(results);
     }
 }
