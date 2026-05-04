@@ -2,16 +2,15 @@ package com.crowdfunding.dynomite.service;
 
 import com.crowdfunding.dynomite.api.dto.KvPutRequest;
 import com.crowdfunding.dynomite.client.PeerClient;
-import com.crowdfunding.dynomite.config.DynomiteProperties;
 import com.crowdfunding.dynomite.ring.RingNode;
 import com.crowdfunding.dynomite.store.KeyValueStore;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -53,7 +52,9 @@ class KvRouterTest {
 
         router.put("alpha", request);
 
-        assertEquals(List.of("local-put:alpha", "remote-put:http://node2"), events);
+        // With single-pass, the order is now determined by replica list order:
+        // remote comes first (async fire-and-forget), then local.
+        assertEquals(List.of("remote-put:http://node2", "local-put:alpha"), events);
     }
 
     @Test
@@ -70,14 +71,17 @@ class KvRouterTest {
         assertFalse(deleted);
     }
 
-    private static final class FixedClusterView extends ClusterView {
+    /**
+     * Simple implementation of {@link ClusterViewPort} for tests.
+     * No super-constructor hack needed.
+     */
+    private static final class FixedClusterView implements ClusterViewPort {
         private static final Duration REQUEST_TIMEOUT = Duration.ofMillis(250);
 
         private final RingNode localNode;
         private final List<RingNode> replicas;
 
         private FixedClusterView(RingNode localNode, List<RingNode> replicas) {
-            super(testProperties(localNode, replicas));
             this.localNode = localNode;
             this.replicas = List.copyOf(replicas);
         }
@@ -95,32 +99,6 @@ class KvRouterTest {
         @Override
         public List<RingNode> replicasForKey(String key) {
             return replicas;
-        }
-
-        private static DynomiteProperties testProperties(RingNode localNode, List<RingNode> replicas) {
-            DynomiteProperties properties = new DynomiteProperties();
-            properties.setNodeId(localNode.id());
-
-            List<DynomiteProperties.Node> nodes = new ArrayList<>();
-            for (RingNode node : new LinkedHashSet<>(replicas)) {
-                DynomiteProperties.Node propertyNode = new DynomiteProperties.Node();
-                propertyNode.setId(node.id());
-                propertyNode.setBaseUrl(node.baseUrl());
-                nodes.add(propertyNode);
-            }
-
-            if (nodes.stream().noneMatch(node -> node.getId().equals(localNode.id()))) {
-                DynomiteProperties.Node propertyNode = new DynomiteProperties.Node();
-                propertyNode.setId(localNode.id());
-                propertyNode.setBaseUrl(localNode.baseUrl());
-                nodes.add(propertyNode);
-            }
-
-            properties.setNodes(nodes);
-            properties.setReplicationFactor(Math.max(1, replicas.size()));
-            properties.setVirtualNodes(16);
-            properties.setRequestTimeoutMillis((int) REQUEST_TIMEOUT.toMillis());
-            return properties;
         }
     }
 
@@ -167,6 +145,12 @@ class KvRouterTest {
         @Override
         public void putLocalOnly(String baseUrl, String key, KvPutRequest request, Duration timeout) {
             events.add("remote-put:" + baseUrl);
+        }
+
+        @Override
+        public Mono<Void> putLocalOnlyAsync(String baseUrl, String key, KvPutRequest request, Duration timeout) {
+            events.add("remote-put:" + baseUrl);
+            return Mono.empty();
         }
 
         @Override
